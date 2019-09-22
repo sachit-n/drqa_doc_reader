@@ -2,10 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# todo - Dropout, Additional passage features, concatenating lstm outputs
+
 
 class StanfAR(nn.Module):
-    def __init__(self, word_emb):
+    def __init__(self, word_emb, batch_size):
         super().__init__()
+
+        self.batch_size = batch_size
 
         self.embedding_layer = nn.Embedding.from_pretrained(embeddings=word_emb)
 
@@ -18,49 +22,45 @@ class StanfAR(nn.Module):
         self.w_end = torch.nn.Parameter(torch.randn(256, 256))
 
     def forward(self, X, Y):
-        global t
 
         query = X
         ctx = Y
 
-        print(f"Input Shape - {query.shape}")
+        # print(f"Input Shape - {query.shape}")
 
         query_vectorized = self.embedding_layer(query)
-        print(f"Embedding Layer Shape - {query_vectorized.shape}")
+        # print(f"Embedding Layer Shape - {query_vectorized.shape}")
 
         ctx_vectorized = self.embedding_layer(ctx)
 
         query_lstm_out = self.lstm_query(query_vectorized)[0]
-        print(f"Query LSTM Out shape - {query_lstm_out.shape}")
+        # print(f"Query LSTM Out shape - {query_lstm_out.shape}")
 
-        t = self.query_attention_sentinel
-        print(f"{self.query_attention_sentinel.shape}")
-
-        query_attn_w = torch.cat(10*[self.query_attention_sentinel]).reshape(10, 256, 1)
-        print(f"{query_attn_w.shape}")
+        query_attn_w = torch.cat(self.batch_size*[self.query_attention_sentinel]).reshape(self.batch_size, 256, 1)
+        # print(f"{query_attn_w.shape}")
         attn_w = torch.bmm(query_lstm_out, query_attn_w)
 
         attn_wts = F.softmax(attn_w, dim=2)
-        print(f"attn_layer shape: {attn_wts.shape}")
+        # print(f"attn_layer shape: {attn_wts.shape}")
 
         attn_query = torch.bmm(query_lstm_out.permute(0, 2, 1), attn_wts)
-        print(f"{attn_query.shape}")
+        # print(f"{attn_query.shape}")
 
         ctx_lstm_out = self.lstm_ctx(ctx_vectorized)[0]
-        print(f"ctxLSTM shape - {ctx_lstm_out.shape}")
+        # print(f"ctxLSTM shape - {ctx_lstm_out.shape}")
 
-        w_start_reshaped = torch.cat(10*[self.w_start]).reshape(10, 256, 256)
-        w_end_reshaped = torch.cat(10 * [self.w_end]).reshape(10, 256, 256)
+        w_start_reshaped = torch.cat(self.batch_size*[self.w_start]).reshape(self.batch_size, 256, 256)
+        w_end_reshaped = torch.cat(self.batch_size * [self.w_end]).reshape(self.batch_size, 256, 256)
 
-        qtW_start = torch.bmm(attn_query.permute(0,2,1), w_start_reshaped)
-        qtW_end = torch.bmm(attn_query.permute(0,2,1), w_end_reshaped)
-        print(f"{qtW_start.shape}")
-        print(f"{qtW_end.shape}")
+        qtW_start = torch.bmm(attn_query.permute(0, 2, 1), w_start_reshaped)
+        qtW_end = torch.bmm(attn_query.permute(0, 2, 1), w_end_reshaped)
+        # print(f"{qtW_start.shape}")
+        # print(f"{qtW_end.shape}")
 
-        start_token = F.softmax(torch.bmm(qtW_start, ctx_lstm_out.permute(0, 2, 1)), dim=2)
-        end_token = F.softmax(torch.bmm(qtW_end, ctx_lstm_out.permute(0, 2, 1)), dim=2)
+        start_token = torch.bmm(qtW_start, ctx_lstm_out.permute(0, 2, 1))
+        end_token = torch.bmm(qtW_end, ctx_lstm_out.permute(0, 2, 1))
 
-        return start_token, end_token
+        return start_token.squeeze(), end_token.squeeze()
 
 
 
