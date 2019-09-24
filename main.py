@@ -98,15 +98,16 @@ torch.set_grad_enabled(True)
 
 network = StanfAR(word_emb, 32).to(device)
 
-optimizer = optim.Adamax(network.parameters(), lr=0.01)
+optimizer = optim.Adam(network.parameters(), lr=0.001)
 
 total_loss = 0
 total_correct = 0
 
 i = 0
-num_epochs = 500
+num_epochs = 100
 
 #%%
+max_acc = 0
 for j in range(num_epochs):
     test_acc1 = []
     test_acc2 = []
@@ -114,20 +115,25 @@ for j in range(num_epochs):
     acc2 = []
     i = 0
     tic_b = time.time()
+    test_done = False
     for batch in df:  # Get Batch
         i += 1
-        query, context, y1, y2, dev_q, dev_ctx, dev_y1, dev_y2 = batch
+        try:
+            query, context, y1, y2, dev_q, dev_ctx, dev_y1, dev_y2 = batch
+        except:
+            query, context, y1, y2 = batch
+            test_done = True
 
         if query.shape[0] != 32:
             break
 
         if i == 100:
             toc_b = time.time()
-            print(f"Time for 100 batches: {toc_b-tic_b}")
+            print(f"Time for 100 batches: {toc_b - tic_b}")
 
         preds = network(query, context)  # Pass Batch
 
-        loss = (F.cross_entropy(preds[0], y1))+(F.cross_entropy(preds[1], y2))
+        loss = (F.cross_entropy(preds[0], y1)) + (F.cross_entropy(preds[1], y2))
 
         optimizer.zero_grad()
         loss.backward()  # Calculate Gradients
@@ -135,18 +141,25 @@ for j in range(num_epochs):
 
         total_loss += loss.item()
 
-        acc1.append((preds[0].argmax(dim=1) == y1).sum())
-        acc2.append((preds[0].argmax(dim=1) == y1).sum())
+        acc1.append((preds[0].argmax(dim=1) == y1).sum().item())
+        acc2.append((preds[1].argmax(dim=1) == y1).sum().item())
 
-        with torch.no_grad():
-            test_preds1, test_preds2 = network(dev_q, dev_ctx)
-            accuracy1 = (test_preds1.argmax(dim=1)==dev_y1).sum()
-            accuracy2 = (test_preds2.argmax(dim=1) == dev_y2).sum()
-            test_acc1.append(accuracy1)
-            test_acc2.append(accuracy2)
+        torch.save(network.state_dict(), "doc_reader_state.pt")
+
+        if not test_done:
+            with torch.no_grad():
+                test_preds1, test_preds2 = network(dev_q, dev_ctx)
+                accuracy1 = (test_preds1.argmax(dim=1) == dev_y1).sum().item()
+                accuracy2 = (test_preds2.argmax(dim=1) == dev_y2).sum().item()
+                test_acc1.append(accuracy1)
+                test_acc2.append(accuracy2)
 
     print(f"Epoch: {j}\ntrain_accuracy1: {np.mean(acc1[-100:])}\ntrain_accuracy2: {np.mean(acc2[-100:])}\ntest_accuracy1: {np.mean(test_acc1[-100:])}\ntest_accuracy2: {np.mean(test_acc2[-100:])}\n")
 
+    if np.mean(test_acc1[-100:]) + np.mean(test_acc2[-100:]) > max_acc:
+        max_acc = np.mean(test_acc1[-100:]) + np.mean(test_acc2[-100:])
+        torch.save(network.state_dict(), "doc_reader_state.pt")
+        print("model_saved")
 
 #%%
 print(

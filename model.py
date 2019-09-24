@@ -44,13 +44,13 @@ class StanfAR(nn.Module):
 
         self.query_align = AlignedQuesEmb()
 
-        self.query_attention_sentinel = torch.nn.Parameter(torch.randn(1, 256))
+        self.query_attention_sentinel = torch.nn.Parameter(torch.randn(1, 256).to(device))
 
         self.lstm_query = nn.LSTM(input_size=300, hidden_size=128, num_layers=3, dropout=0.3, bidirectional=True, batch_first=True)
         self.lstm_ctx = nn.LSTM(input_size=601, hidden_size=128, num_layers=3, dropout=0.3, bidirectional=True, batch_first=True)
 
-        self.w_start = torch.nn.Parameter(torch.randn(256, 256))
-        self.w_end = torch.nn.Parameter(torch.randn(256, 256))
+        self.w_start = torch.nn.Parameter(torch.randn(256, 256).to(device))
+        self.w_end = torch.nn.Parameter(torch.randn(256, 256).to(device))
 
     def forward(self, X, Y):
 
@@ -72,7 +72,6 @@ class StanfAR(nn.Module):
 
         ctx_features = torch.cat([ctx_emb, aligned_ques_emb], dim=2)
         ctx_features = torch.cat([ctx_features, exact_match], dim=2)
-
 
         query_lstm_out = self.lstm_query(query_emb)[0]
         # print(f"Query LSTM Out shape - {query_lstm_out.shape}")

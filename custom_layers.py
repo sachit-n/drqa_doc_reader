@@ -3,6 +3,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+
+class QuesAttn(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.sentinel_vec = torch.nn.Parameter(torch.randn(256,1)).to(device)
+        self.sentinel_vec.requires_grad = True
+
+    def forward(self, query_lstm_out):
+        attn = torch.matmul(query_lstm_out, self.sentinel_vec)
+        attn_wts = F.softmax(attn, dim=1)
+
+        query_weighted = torch.bmm(attn_wts.permute(0,2,1), query_lstm_out)
+
+        return query_weighted
+
+
 class AlignedQuesEmb(nn.Module):
     def __init__(self):
         super().__init__()
