@@ -20,8 +20,6 @@ steps -
 8. packaging, code quality testing, etc.
 '''
 
-
-# %%
 # %%
 def load_json_file(path):
     with open(path) as file:
@@ -44,17 +42,15 @@ def load_files(path):
 
     return word2idx, idx2word, word_emb, train_data, dev_data
 
-
-# %%
 # %% loading
 word2idx, idx2word, word_emb, train_data, dev_data = load_files(path='data')
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# %%
-device
-# %%
+print(f"Device: {device}")
+
+
 # %% preprocessing
 train_q = torch.LongTensor(train_data['ques_idxs']).to(device)
 train_c = torch.LongTensor(train_data['context_idxs']).to(device)
@@ -99,7 +95,6 @@ class Dataset(data.Dataset):
 
 
 # %%
-# %%
 df = torch.utils.data.DataLoader(Dataset(), batch_size=32)
 
 # %% training loop
@@ -108,6 +103,8 @@ torch.set_grad_enabled(True)
 network = StanfAR(word_emb).to(device)
 
 optimizer = optim.Adam(network.parameters(), lr=0.001)
+
+print(f'Sentinel: {"query_attn.sentinel_vec" in network.state_dict()}')
 
 total_loss = 0
 total_correct = 0
@@ -139,6 +136,7 @@ for j in range(num_epochs):
         if i == 100:
             toc_b = time.time()
             print(f"Time for 100 batches: {toc_b - tic_b}")
+            print(f'Sentinel: {"query_attn.sentinel_vec" in network.state_dict()}')
 
         preds = network(query, context)  # Pass Batch
 
@@ -163,13 +161,13 @@ for j in range(num_epochs):
                 test_acc1.append(accuracy1)
                 test_acc2.append(accuracy2)
 
-    print(f"Epoch: {j}\ntrain_accuracy1: {np.mean(acc1[-100:])}\ntrain_accuracy2: {np.mean(
-        acc2[-100:])}\ntest_accuracy1: {np.mean(test_acc1[-100:])}\ntest_accuracy2: {np.mean(test_acc2[-100:])}\n")
+    print(f"Epoch: {j}\ntrain_accuracy1: {np.mean(acc1[-100:])}\ntrain_accuracy2: {np.mean(acc2[-100:])}\ntest_accuracy1: {np.mean(test_acc1[-100:])}\ntest_accuracy2: {np.mean(test_acc2[-100:])}\n")
 
     if np.mean(test_acc1[-100:]) + np.mean(test_acc2[-100:]) > max_acc:
         torch.save(network.state_dict(), f"doc_reader_state_{round(max_acc / 2, 2)}.pth")
         print("model_saved")
 
 # %%
+
 
 # %%

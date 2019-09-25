@@ -33,8 +33,8 @@ word2idx, idx2word, word_emb = load_files(path='data')
 
 spacy_parser = spacy.load("en")
 model = StanfAR(word_emb).to(device)
-# model.load_state_dict(torch.load("models/doc_reader_state_0.0.pth", map_location=device))
-# model.eval()
+model.load_state_dict(torch.load("models/doc_reader_state_0.0.pth", map_location=device))
+model.eval()
 
 
 #%%
