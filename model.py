@@ -4,8 +4,6 @@ import torch.nn.functional as F
 import pandas as pd
 from custom_layers import AlignedQuesEmb, QuesAttn
 
-print("new2")
-
 # todo - Additional passage features, concatenating lstm outputs, partially freeze pretrained
 
 

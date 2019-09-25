@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils import data
 import time
+import spacy
 
 '''
 steps - 
@@ -18,9 +19,10 @@ steps -
 7. web app
 8. packaging, code quality testing, etc.
 '''
-#%%
 
 
+# %%
+# %%
 def load_json_file(path):
     with open(path) as file:
         out = json.load(file)
@@ -38,18 +40,22 @@ def load_files(path):
     train_data = load_npz_file(path + "/train.npz")
     dev_data = load_npz_file(path + "/dev.npz")
 
-    idx2word = {i:j for j,i in word2idx.items()}
+    idx2word = {i: j for j, i in word2idx.items()}
 
     return word2idx, idx2word, word_emb, train_data, dev_data
 
 
-#%% loading
+# %%
+# %% loading
 word2idx, idx2word, word_emb, train_data, dev_data = load_files(path='data')
 
-#%%
+# %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-#%% preprocessing
+# %%
+device
+# %%
+# %% preprocessing
 train_q = torch.LongTensor(train_data['ques_idxs']).to(device)
 train_c = torch.LongTensor(train_data['context_idxs']).to(device)
 
@@ -58,7 +64,7 @@ labels2 = torch.as_tensor(train_data['y2s']).to(device)
 
 word_emb = torch.as_tensor(word_emb).to(device)
 
-#%%
+# %%
 dev_q = torch.LongTensor(dev_data['ques_idxs']).to(device)
 dev_c = torch.LongTensor(dev_data['context_idxs']).to(device)
 
@@ -66,7 +72,7 @@ labels1_dev = torch.as_tensor(dev_data['y1s']).to(device)
 labels2_dev = torch.as_tensor(dev_data['y2s']).to(device)
 
 
-#%%
+# %%
 class Dataset(data.Dataset):
     def __init__(self):
         super().__init__()
@@ -81,22 +87,25 @@ class Dataset(data.Dataset):
         y1 = self.data[2][idx]
         y2 = self.data[3][idx]
 
-        dev_query = self.data[4][idx]
-        dev_ctx = self.data[5][idx]
-        dev_l1 = self.data[6][idx]
-        dev_l2 = self.data[7][idx]
+        try:
+            dev_query = self.data[4][idx]
+            dev_ctx = self.data[5][idx]
+            dev_l1 = self.data[6][idx]
+            dev_l2 = self.data[7][idx]
+        except:
+            return query, ctx, y1, y2
 
         return query, ctx, y1, y2, dev_query, dev_ctx, dev_l1, dev_l2
 
 
-#%%
+# %%
+# %%
 df = torch.utils.data.DataLoader(Dataset(), batch_size=32)
 
-
-#%% training loop
+# %% training loop
 torch.set_grad_enabled(True)
 
-network = StanfAR(word_emb, 32).to(device)
+network = StanfAR(word_emb).to(device)
 
 optimizer = optim.Adam(network.parameters(), lr=0.001)
 
@@ -104,9 +113,9 @@ total_loss = 0
 total_correct = 0
 
 i = 0
-num_epochs = 100
+num_epochs = 500
 
-#%%
+# %%
 max_acc = 0
 for j in range(num_epochs):
     test_acc1 = []
@@ -124,8 +133,8 @@ for j in range(num_epochs):
             query, context, y1, y2 = batch
             test_done = True
 
-        if query.shape[0] != 32:
-            break
+        # if query.shape[0] != 32:
+        #   break
 
         if i == 100:
             toc_b = time.time()
@@ -154,23 +163,13 @@ for j in range(num_epochs):
                 test_acc1.append(accuracy1)
                 test_acc2.append(accuracy2)
 
-    print(f"Epoch: {j}\ntrain_accuracy1: {np.mean(acc1[-100:])}\ntrain_accuracy2: {np.mean(acc2[-100:])}\ntest_accuracy1: {np.mean(test_acc1[-100:])}\ntest_accuracy2: {np.mean(test_acc2[-100:])}\n")
+    print(f"Epoch: {j}\ntrain_accuracy1: {np.mean(acc1[-100:])}\ntrain_accuracy2: {np.mean(
+        acc2[-100:])}\ntest_accuracy1: {np.mean(test_acc1[-100:])}\ntest_accuracy2: {np.mean(test_acc2[-100:])}\n")
 
     if np.mean(test_acc1[-100:]) + np.mean(test_acc2[-100:]) > max_acc:
-        max_acc = np.mean(test_acc1[-100:]) + np.mean(test_acc2[-100:])
-        torch.save(network.state_dict(), "doc_reader_state.pt")
+        torch.save(network.state_dict(), f"doc_reader_state_{round(max_acc / 2, 2)}.pth")
         print("model_saved")
-#%%
-print(
-    "epoch:", 0,
-    "total_correct:", total_correct,
-    "loss:", total_loss
-)
 
+# %%
 
-
-#%%
-model = StanfAR(word_emb, 32)
-sample_data_q, sample_data_c  = next(iter(train_loader_q)), next(iter(train_loader_c))
-
-out = model(sample_data_q, sample_data_c)
+# %%
