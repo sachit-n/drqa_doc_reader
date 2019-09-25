@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
-from custom_layers import AlignedQuesEmb
+from custom_layers import AlignedQuesEmb, QuesAttn
 
 # todo - Additional passage features, concatenating lstm outputs, partially freeze pretrained
 
@@ -10,11 +10,12 @@ from custom_layers import AlignedQuesEmb
 #%%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def get_uncased_match(query, context):
     ctx_df = pd.DataFrame(context.tolist()).T
     out_tensor = torch.tensor([], dtype=torch.float32)
     query_checker = query.tolist()
-    for i in range(32):
+    for i in range(query.shape[0]):
         em = torch.as_tensor((ctx_df[i].isin(query_checker[i])) & (ctx_df[i].isin([0, 1])==False), dtype=torch.float32).unsqueeze(0)
         out_tensor = torch.cat([out_tensor, em], dim=0)
     return out_tensor.to(device)
@@ -34,17 +35,15 @@ def get_uncased_match(query, context):
 
 #%%
 class StanfAR(nn.Module):
-    def __init__(self, word_emb, batch_size):
+    def __init__(self, word_emb):
         super().__init__()
-
-        self.batch_size = batch_size
 
         self.embedding_layer = nn.Embedding.from_pretrained(embeddings=word_emb)
         self.dropout = nn.Dropout(p=0.3)
 
-        self.query_align = AlignedQuesEmb()
+        self.query_align = AlignedQuesEmb().to(device)
 
-        self.query_attention_sentinel = torch.nn.Parameter(torch.randn(1, 256).to(device))
+        self.query_attn = QuesAttn().to(device)
 
         self.lstm_query = nn.LSTM(input_size=300, hidden_size=128, num_layers=3, dropout=0.3, bidirectional=True, batch_first=True)
         self.lstm_ctx = nn.LSTM(input_size=601, hidden_size=128, num_layers=3, dropout=0.3, bidirectional=True, batch_first=True)
@@ -57,7 +56,7 @@ class StanfAR(nn.Module):
         query = X
         ctx = Y
 
-        exact_match = get_uncased_match(query, ctx).reshape(32, 400, 1)
+        exact_match = get_uncased_match(query, ctx).reshape(query.shape[0], 400, 1)
 
         # print(f"Input Shape - {query.shape}")
 
@@ -76,26 +75,14 @@ class StanfAR(nn.Module):
         query_lstm_out = self.lstm_query(query_emb)[0]
         # print(f"Query LSTM Out shape - {query_lstm_out.shape}")
 
-        query_attn_w = torch.cat(self.batch_size*[self.query_attention_sentinel]).reshape(self.batch_size, 256, 1)
-        # print(f"{query_attn_w.shape}")
-        attn_w = torch.bmm(query_lstm_out, query_attn_w)
-
-        attn_wts = F.softmax(attn_w, dim=2)
-        # print(f"attn_layer shape: {attn_wts.shape}")
-
-        attn_query = torch.bmm(query_lstm_out.permute(0, 2, 1), attn_wts)
+        attn_query = self.query_attn(query_lstm_out)
         # print(f"{attn_query.shape}")
 
         ctx_lstm_out = self.lstm_ctx(ctx_features)[0]
         # print(f"ctxLSTM shape - {ctx_lstm_out.shape}")
 
-        w_start_reshaped = torch.cat(self.batch_size*[self.w_start]).reshape(self.batch_size, 256, 256)
-        w_end_reshaped = torch.cat(self.batch_size * [self.w_end]).reshape(self.batch_size, 256, 256)
-
-        qtW_start = torch.bmm(attn_query.permute(0, 2, 1), w_start_reshaped)
-        qtW_end = torch.bmm(attn_query.permute(0, 2, 1), w_end_reshaped)
-        # print(f"{qtW_start.shape}")
-        # print(f"{qtW_end.shape}")
+        qtW_start = torch.matmul(attn_query, self.w_start)
+        qtW_end = torch.matmul(attn_query, self.w_end)
 
         start_token = torch.bmm(qtW_start, ctx_lstm_out.permute(0, 2, 1))
         end_token = torch.bmm(qtW_end, ctx_lstm_out.permute(0, 2, 1))
