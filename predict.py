@@ -3,6 +3,7 @@ import torch
 from model import StanfAR
 import json
 import numpy as np
+import torch.nn.functional as F
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,7 +34,7 @@ word2idx, idx2word, word_emb = load_files(path='data')
 
 spacy_parser = spacy.load("en")
 model = StanfAR(word_emb).to(device)
-model.load_state_dict(torch.load("models/doc_reader_state_0.0.pth", map_location=device))
+model.load_state_dict(torch.load("models/epoch1.pth", map_location=device))
 model.eval()
 
 
@@ -52,12 +53,19 @@ def string_to_tensor(tokens, seq_length):
     return out_tensor
 
 
-def get_pred_idx(pred: tuple):
+def find_next_best(pred: tuple, start_idx: int, end_idx: int) -> tuple:
+    start_idx_new = pred[0].argsort[1].item()
+    end_idx_new = pred[1].argsort[1].item()
+
+
+
+
+def get_pred_idx(pred: tuple) -> tuple:
     start_idx = pred[0].argmax().item()
     end_idx = pred[1].argmax().item()
 
     if end_idx - start_idx > 15 or end_idx - start_idx < 0:
-        pred[1][end_idx] = 0
+        find_next_best(pred, start_idx, end_idx)
         get_pred_idx(pred)
 
     return start_idx, end_idx
@@ -68,8 +76,8 @@ def pred_to_ans(pred: tuple, ctx_seq: torch.tensor) -> str:
 
     ans = ''
     for idx in range(start_idx, end_idx+1):
-        word_idx = ctx_seq[idx]
-        ans = ' ' + word2idx[word_idx]
+        word_idx = ctx_seq[idx].item()
+        ans = ' ' + idx2word[word_idx]
 
     return ans
 
@@ -89,7 +97,7 @@ def predict(query: str, context: str) -> str:
     ctx_seq = string_to_tensor(ctx_tokens, 400)
 
     with torch.no_grad():
-        prediction = model(query_seq, ctx_seq)
+        prediction = F.softmax(model(query_seq, ctx_seq))
 
     predicted_ans = pred_to_ans(prediction, ctx_seq.squeeze(0))
 
